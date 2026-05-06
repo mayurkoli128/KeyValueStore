@@ -20,6 +20,9 @@ public class Solution {
 
         Node entry = cluster.getAnyNode();
 
+        System.out.println("\n---- NODE HEALTH CHECK ----");
+        System.out.println("Node " + entry.getNodeId() + " isRunning: " + entry.isRunning());
+
         System.out.println("\n---- PUT ----");
         entry.put("user:1", "Mayur");
         entry.put("user:2", "Aman");
@@ -35,5 +38,10 @@ public class Solution {
         cluster.addNode("node4");
 
         cluster.printCluster();
+
+        // Demonstrate stop and running check
+        System.out.println("\n---- STOP NODE ----");
+        entry.stop();
+        System.out.println("Node " + entry.getNodeId() + " isRunning: " + entry.isRunning());
     }
 }

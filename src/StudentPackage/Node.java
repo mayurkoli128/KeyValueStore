@@ -19,6 +19,8 @@ public class Node {
     private final Map<String, Object> store = new HashMap<>();
 
     private Map<String, Node> cluster;
+    
+    private boolean running = false;
 
     /**
      * Creates a new Node with the specified ID and list of peer nodes.
@@ -51,7 +53,25 @@ public class Node {
      * Starts the node and prints a startup message.
      */
     public void start() {
+        this.running = true;
         System.out.println("Node started: " + nodeId);
+    }
+
+    /**
+     * Stops the node gracefully.
+     */
+    public void stop() {
+        this.running = false;
+        System.out.println("Node stopped: " + nodeId);
+    }
+
+    /**
+     * Checks if the node is currently running.
+     *
+     * @return true if the node is running, false otherwise
+     */
+    public boolean isRunning() {
+        return running;
     }
 
     /**
