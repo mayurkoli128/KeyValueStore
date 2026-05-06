@@ -43,6 +43,17 @@ public class Solution {
         System.out.println();
         System.out.println("Result: " + entry.get("user:3"));
 
+        // Test WAL persistence
+        System.out.println("\n========== WAL PERSISTENCE TEST ==========");
+        System.out.println("Stopping node2 (data goes to WAL on disk)...");
+        cluster.getNode("node2").stop();
+        
+        System.out.println("\nRestarting node2 (data recovered from WAL)...");
+        cluster.getNode("node2").start();
+        
+        System.out.println("\n--- GET after node2 restart (data should be recovered) ---");
+        System.out.println("Result: " + entry.get("user:1"));
+
         // Show cluster state
         System.out.println("\n========== CLUSTER STATE ==========");
         cluster.printCluster();

@@ -1,10 +1,11 @@
 package StudentPackage;
 
 import java.util.*;
+import java.io.*;
 
 /**
  * Node represents a single node in the distributed key-value store cluster.
- * Supports simple replication and fault tolerance.
+ * Supports simple replication, fault tolerance, and WAL for persistence.
  */
 public class Node {
 
@@ -20,12 +21,16 @@ public class Node {
     // Number of replicas to keep
     private final int replicationFactor;
     
+    // WAL file for persistence
+    private final String walFile;
+    
     private boolean running = false;
 
     public Node(String nodeId, int replicationFactor) {
         this.nodeId = nodeId;
         this.replicationFactor = replicationFactor;
         this.ring = new ConsistentHashRing();
+        this.walFile = "data/" + nodeId + "/wal.log";
         ring.addNode(this);
     }
 
@@ -42,6 +47,12 @@ public class Node {
     }
 
     public void start() {
+        // Create data directory
+        new File("data/" + nodeId).mkdirs();
+        
+        // Replay WAL to recover data
+        replayWAL();
+        
         this.running = true;
         System.out.println("Node started: " + nodeId);
     }
@@ -49,6 +60,42 @@ public class Node {
     public void stop() {
         this.running = false;
         System.out.println("Node stopped: " + nodeId);
+    }
+    
+    // ==================== WAL ====================
+    
+    // Append to WAL before storing
+    private void appendToWAL(String key, Object value) {
+        try (FileWriter fw = new FileWriter(walFile, true)) {
+            fw.write("PUT " + key + " " + value + "\n");
+            System.out.println("  [WAL] " + nodeId + " logged: PUT " + key + " " + value);
+        } catch (IOException e) {
+            System.out.println("  [WAL ERROR] " + e.getMessage());
+        }
+    }
+    
+    // Replay WAL on restart
+    private void replayWAL() {
+        File file = new File(walFile);
+        if (!file.exists()) return;
+        
+        try (BufferedReader br = new BufferedReader(new FileReader(file))) {
+            String line;
+            int count = 0;
+            while ((line = br.readLine()) != null) {
+                // Parse: "PUT key value"
+                String[] parts = line.split(" ", 3);
+                if (parts.length == 3 && parts[0].equals("PUT")) {
+                    store.put(parts[1], parts[2]);
+                    count++;
+                }
+            }
+            if (count > 0) {
+                System.out.println("  [WAL] " + nodeId + " replayed " + count + " entries");
+            }
+        } catch (IOException e) {
+            System.out.println("  [WAL ERROR] " + e.getMessage());
+        }
     }
 
     public boolean isRunning() {
@@ -74,12 +121,7 @@ public class Node {
         boolean primarySuccess = false;
         int replicaCount = 0;
 
-        // Store on primary
-        if (primaryNode == this) {
-            store.put(key, value);
-            System.out.println("  [STORE] " + nodeId + " stored (self): " + key + " = " + value);
-            primarySuccess = true;
-        } else if (primaryNode.isRunning()) {
+        if (primaryNode.isRunning()) {
             primaryNode.storeData(key, value);
             primarySuccess = true;
         } else {
@@ -108,12 +150,7 @@ public class Node {
         System.out.println("[GET] Entry: " + nodeId + " | Key: " + key);
         System.out.println("  Primary: " + primaryNode.getNodeId() + " | Replicas: " + getReplicaNames(replicas));
 
-        // Try primary first
-        if (primaryNode == this) {
-            Object value = store.get(key);
-            System.out.println("  [SERVE] " + nodeId + " serving (self): " + key + " = " + value);
-            return value;
-        } else if (primaryNode.isRunning()) {
+        if (primaryNode.isRunning()) {
             Object value = primaryNode.getData(key);
             return value;
         }
@@ -134,9 +171,10 @@ public class Node {
         return null;
     }
 
-    // Store data directly
+    // Store data directly - WAL first, then memory
     public void storeData(String key, Object value) {
-        store.put(key, value);
+        appendToWAL(key, value);  // 1. Write to WAL (disk)
+        store.put(key, value);     // 2. Update memory
         System.out.println("  [STORE] " + nodeId + " stored: " + key + " = " + value);
     }
 
