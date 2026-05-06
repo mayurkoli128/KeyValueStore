@@ -2,46 +2,49 @@ package StudentPackage;
 
 import java.util.List;
 
-/**
- * Solution class containing the main demonstration of the distributed KV store.
- */
 public class Solution {
 
-    /**
-     * Demonstrates the functionality of the distributed key-value store.
-     * Creates a cluster, performs put/get operations, and adds a new node.
-     */
     public void solve() {
 
-        KVStore kvStore = new KVStore();
+        KVStore cluster = new KVStore();
 
-        // Create cluster
-        kvStore.createCluster(List.of("node1", "node2", "node3"));
+        // Create cluster with 3 nodes (replicationFactor is property of Node, default=1)
+        System.out.println("========== CREATING CLUSTER ==========");
+        cluster.createCluster(List.of("node1", "node2", "node3", "node4"));
 
-        Node entry = kvStore.getAnyNode();
+        Node entry = cluster.getAnyNode();
+        System.out.println("\nEntry point: " + entry.getNodeId());
 
-        System.out.println("\n---- NODE HEALTH CHECK ----");
-        System.out.println("Node " + entry.getNodeId() + " isRunning: " + entry.isRunning());
-
-        System.out.println("\n---- PUT ----");
+        // PUT operations - shows logging and replication
+        System.out.println("\n========== PUT OPERATIONS (with replication) ==========");
         entry.put("user:1", "Mayur");
+        System.out.println();
         entry.put("user:2", "Aman");
+        System.out.println();
         entry.put("user:3", "Ravi");
 
-        System.out.println("\n---- GET ----");
-        System.out.println(entry.get("user:1"));
-        System.out.println(entry.get("user:2"));
-        System.out.println(entry.get("user:3"));
+        // GET operations - shows which node serves
+        System.out.println("\n========== GET OPERATIONS ==========");
+        System.out.println("Result: " + entry.get("user:1"));
+        System.out.println();
+        System.out.println("Result: " + entry.get("user:2"));
+        System.out.println();
+        System.out.println("Result: " + entry.get("user:3"));
 
-        // Add new node
-        System.out.println("\n---- ADD NODE ----");
-        kvStore.addNode("node4");
+        // Stop the primary node to demonstrate failover
+        System.out.println("\n========== FAULT TOLERANCE TEST ==========");
+        System.out.println("Stopping node3 (primary for user:1 and user:3) to test failover...");
+        cluster.getNode("node3").stop();
 
-        kvStore.printCluster();
+        System.out.println("\n--- Getting data after node3 is down (should use backup node1) ---");
+        System.out.println("Result: " + entry.get("user:1"));
+        System.out.println();
+        System.out.println("Result: " + entry.get("user:2"));
+        System.out.println();
+        System.out.println("Result: " + entry.get("user:3"));
 
-        // Demonstrate stop and running check
-        System.out.println("\n---- STOP NODE ----");
-        entry.stop();
-        System.out.println("Node " + entry.getNodeId() + " isRunning: " + entry.isRunning());
+        // Show cluster state
+        System.out.println("\n========== CLUSTER STATE ==========");
+        cluster.printCluster();
     }
 }

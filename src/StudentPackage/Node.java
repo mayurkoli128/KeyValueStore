@@ -1,162 +1,187 @@
 package StudentPackage;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Node represents a single node in the distributed key-value store cluster.
- * Each node maintains its own local store and can route requests to other nodes
- * using consistent hashing.
+ * Supports simple replication and fault tolerance.
  */
 public class Node {
 
     private final String nodeId;
     private final ConsistentHashRing ring;
 
-    private final Map<String, Object> store = new HashMap<>();
+    // Store - all data (primary + replicated)
+    private final Map<String, Object> store = new TreeMap<>();
 
-    private Map<String, Node> peerNodes = new HashMap<>();
+    // Peer nodes (excluding self) - TreeMap for sorted order
+    private Map<String, Node> peerNodes = new TreeMap<>();
+    
+    // Number of replicas to keep
+    private final int replicationFactor;
     
     private boolean running = false;
 
-    /**
-     * Creates a new Node with the specified ID.
-     *
-     * @param nodeId Unique identifier for this node
-     */
-    public Node(String nodeId) {
+    public Node(String nodeId, int replicationFactor) {
         this.nodeId = nodeId;
-        this.ring = new ConsistentHashRing(1);
-        ring.addNode(nodeId);
+        this.replicationFactor = replicationFactor;
+        this.ring = new ConsistentHashRing();
+        ring.addNode(this);
     }
 
-    /**
-     * Sets the peer nodes (excluding self) for internode communication and updates the hash ring.
-     *
-     * @param allNodes Map of all node IDs to Node instances (this method will filter out self)
-     */
     public void setPeerNodes(Map<String, Node> allNodes) {
-        this.peerNodes = new HashMap<>();
+        this.peerNodes = new TreeMap<>();
+        
+        // Add peers to ring
         for (Map.Entry<String, Node> entry : allNodes.entrySet()) {
             if (!entry.getKey().equals(nodeId)) {
-                this.peerNodes.put(entry.getKey(), entry.getValue());
-                ring.addNode(entry.getKey());
+                peerNodes.put(entry.getKey(), entry.getValue());
+                ring.addNode(entry.getValue());
             }
         }
     }
 
-    /**
-     * Starts the node and prints a startup message.
-     */
     public void start() {
         this.running = true;
         System.out.println("Node started: " + nodeId);
     }
 
-    /**
-     * Stops the node gracefully.
-     */
     public void stop() {
         this.running = false;
         System.out.println("Node stopped: " + nodeId);
     }
 
-    /**
-     * Checks if the node is currently running.
-     *
-     * @return true if the node is running, false otherwise
-     */
     public boolean isRunning() {
         return running;
     }
 
     /**
-     * Sends a message to another node in the cluster.
-     *
-     * @param targetNode The target node ID
-     * @param message    The message to send
-     * @return The response from the target node, or null if the node doesn't exist
+     * Dynamically calculates the next N replica nodes from a given node using TreeMap.
+     * This can be called even if the primary node is down.
      */
-    public Map<String, Object> sendToNode(String targetNode, Map<String, Object> message) {
-        Node node = peerNodes.get(targetNode);
-        if (node == null) return null;
+    private List<Node> getReplicaNodes(String primaryNodeId, int count) {
+        List<Node> replicas = new ArrayList<>();
 
-        return node.onMessage(this.nodeId, message);
+        // Build sorted map of all nodes (including self)
+        TreeMap<String, Node> allNodes = new TreeMap<>(peerNodes);
+        allNodes.put(nodeId, this);
+
+        String currentId = primaryNodeId;
+        for (int i = 0; i < count && replicas.size() < allNodes.size() - 1; i++) {
+            String nextId = allNodes.higherKey(currentId);
+
+            // Wrap around to first node if at the end
+            if (nextId == null) {
+                nextId = allNodes.firstKey();
+            }
+
+            // Don't add the primary itself as replica
+            if (!nextId.equals(primaryNodeId)) {
+                replicas.add(allNodes.get(nextId));
+            }
+            currentId = nextId;
+        }
+        
+        return replicas;
     }
 
-    /**
-     * Handles incoming messages from other nodes.
-     *
-     * @param fromNode The sender node ID
-     * @param message  The received message
-     * @return Response map based on the action performed
-     */
-    public Map<String, Object> onMessage(String fromNode, Map<String, Object> message) {
-
-        String action = (String) message.get("action");
-
-        if ("put".equals(action)) {
-            store.put((String) message.get("key"), message.get("value"));
-            return Map.of("status", "ok");
+    private String getReplicaNames(List<Node> replicas) {
+        List<String> names = new ArrayList<>();
+        for (Node n : replicas) {
+            names.add(n.getNodeId());
         }
-
-        if ("get".equals(action)) {
-            return Map.of("value", store.get(message.get("key")));
-        }
-
-        return Map.of();
+        return names.toString();
     }
 
-    /**
-     * Stores a key-value pair in the appropriate node determined by consistent hashing.
-     *
-     * @param key   The key to store
-     * @param value The value to store
-     * @return true if the operation was successful, false otherwise
-     */
     public boolean put(String key, Object value) {
-        String targetNode = ring.getNode(key);
+        Node primaryNode = ring.getNode(key);
+        // Calculate replicas dynamically - works even if primary is down!
+        List<Node> replicas = getReplicaNodes(primaryNode.getNodeId(), replicationFactor);
+        
+        System.out.println("[PUT] Entry: " + nodeId + " | Key: " + key + " | Value: " + value);
+        System.out.println("  Primary: " + primaryNode.getNodeId() + " | Replicas: " + getReplicaNames(replicas));
 
-        if (targetNode.equals(nodeId)) {
+        boolean primarySuccess = false;
+        int replicaCount = 0;
+
+        // Store on primary
+        if (primaryNode == this) {
             store.put(key, value);
-            return true;
+            System.out.println("  [STORE] " + nodeId + " stored (self): " + key + " = " + value);
+            primarySuccess = true;
+        } else if (primaryNode.isRunning()) {
+            primaryNode.storeData(key, value);
+            primarySuccess = true;
+        } else {
+            System.out.println("  [WARN] Primary " + primaryNode.getNodeId() + " is DOWN!");
         }
 
-        Map<String, Object> response = sendToNode(
-                targetNode,
-                Map.of("action", "put", "key", key, "value", value)
-        );
+        // Store on replica servers
+        for (Node replicaNode : replicas) {
+            if (replicaNode.isRunning()) {
+                replicaNode.storeData(key, value);
+                replicaCount++;
+            } else {
+                System.out.println("  [FAILOVER] Replica " + replicaNode.getNodeId() + " is DOWN! Trying other replicas...");
+            }
+        }
 
-        return response != null;
+        System.out.println("  Result: Primary=" + (primarySuccess ? "OK" : "FAILED") + ", Replicas=" + replicaCount);
+        return primarySuccess || replicaCount > 0;
     }
 
-    /**
-     * Retrieves a value for the given key from the appropriate node.
-     *
-     * @param key The key to look up
-     * @return The value associated with the key, or null if not found
-     */
     public Object get(String key) {
-        String targetNode = ring.getNode(key);
+        Node primaryNode = ring.getNode(key);
+        // Calculate replicas dynamically - works even if primary is down!
+        List<Node> replicas = getReplicaNodes(primaryNode.getNodeId(), replicationFactor);
+        
+        System.out.println("[GET] Entry: " + nodeId + " | Key: " + key);
+        System.out.println("  Primary: " + primaryNode.getNodeId() + " | Replicas: " + getReplicaNames(replicas));
 
-        if (targetNode.equals(nodeId)) {
-            return store.get(key);
+        // Try primary first
+        if (primaryNode == this) {
+            Object value = store.get(key);
+            System.out.println("  [SERVE] " + nodeId + " serving (self): " + key + " = " + value);
+            return value;
+        } else if (primaryNode.isRunning()) {
+            Object value = primaryNode.getData(key);
+            return value;
         }
 
-        Map<String, Object> response = sendToNode(
-                targetNode,
-                Map.of("action", "get", "key", key)
-        );
+        // Primary is down, try replicas
+        System.out.println("  [FAILOVER] Primary " + primaryNode.getNodeId() + " is DOWN! Trying replicas...");
+        
+        for (Node replicaNode : replicas) {
+            if (replicaNode.isRunning()) {
+                Object value = replicaNode.getData(key);
+                return value;
+            } else {
+                System.out.println("  [FAILOVER] Replica " + replicaNode.getNodeId() + " is DOWN! Trying other replicas...");
+            }
+        }
 
-        return response != null ? response.get("value") : null;
+        System.out.println("  [ERROR] No nodes available!");
+        return null;
     }
 
-    /**
-     * Gets the unique identifier for this node.
-     *
-     * @return The node ID
-     */
+    // Store data directly
+    public void storeData(String key, Object value) {
+        store.put(key, value);
+        System.out.println("  [STORE] " + nodeId + " stored: " + key + " = " + value);
+    }
+
+    // Get data directly
+    public Object getData(String key) {
+        Object value = store.get(key);
+        System.out.println("  [SERVE] " + nodeId + " serving: " + key + " = " + value);
+        return value;
+    }
+
     public String getNodeId() {
         return nodeId;
+    }
+
+    public Map<String, Object> getStore() {
+        return new TreeMap<>(store);
     }
 }

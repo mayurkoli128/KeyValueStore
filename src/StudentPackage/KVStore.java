@@ -1,8 +1,8 @@
 package StudentPackage;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * KVStore manages a cluster of distributed key-value store nodes.
@@ -10,19 +10,21 @@ import java.util.Map;
  */
 public class KVStore {
 
-    private final Map<String, Node> nodes = new HashMap<>();
+    // TreeMap for sorted node order
+    private final Map<String, Node> nodes = new TreeMap<>();
 
     /**
      * Creates a new cluster with the specified node IDs.
-     * All nodes are initialized and connected to each other.
      *
      * @param nodeIds List of node identifiers to create
      */
     public void createCluster(List<String> nodeIds) {
 
+        int replicationFactor = 2;
+
         // Step 1: Create all nodes
         for (String nodeId : nodeIds) {
-            Node node = new Node(nodeId);
+            Node node = new Node(nodeId, replicationFactor);
             nodes.put(nodeId, node);
         }
 
@@ -30,42 +32,6 @@ public class KVStore {
         for (Node node : nodes.values()) {
             node.setPeerNodes(nodes);
             node.start();
-        }
-    }
-
-    /**
-     * Adds a new node to the existing cluster.
-     *
-     * @param nodeId The identifier for the new node
-     */
-    public void addNode(String nodeId) {
-
-        System.out.println("Adding node: " + nodeId);
-
-        Node newNode = new Node(nodeId);
-        nodes.put(nodeId, newNode);
-
-        // Update peer nodes reference everywhere
-        for (Node node : nodes.values()) {
-            node.setPeerNodes(nodes);
-        }
-
-        newNode.start();
-    }
-
-    /**
-     * Removes a node from the cluster.
-     *
-     * @param nodeId The identifier of the node to remove
-     */
-    public void removeNode(String nodeId) {
-
-        System.out.println("Removing node: " + nodeId);
-
-        nodes.remove(nodeId);
-
-        for (Node node : nodes.values()) {
-            node.setPeerNodes(nodes);
         }
     }
 
@@ -84,15 +50,6 @@ public class KVStore {
      */
     public void printCluster() {
         System.out.println("Current nodes: " + nodes.keySet());
-    }
-
-    /**
-     * Gets the number of nodes in the cluster.
-     *
-     * @return The number of nodes
-     */
-    public int getClusterSize() {
-        return nodes.size();
     }
 
     /**
