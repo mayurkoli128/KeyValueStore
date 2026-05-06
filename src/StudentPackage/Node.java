@@ -59,6 +59,7 @@ public class Node {
 
     public void stop() {
         this.running = false;
+        store.clear();
         System.out.println("Node stopped: " + nodeId);
     }
     
