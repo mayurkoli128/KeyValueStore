@@ -13,12 +13,12 @@ public class Solution {
      */
     public void solve() {
 
-        KVStore cluster = new KVStore();
+        KVStore kvStore = new KVStore();
 
         // Create cluster
-        cluster.createCluster(List.of("node1", "node2", "node3"));
+        kvStore.createCluster(List.of("node1", "node2", "node3"));
 
-        Node entry = cluster.getAnyNode();
+        Node entry = kvStore.getAnyNode();
 
         System.out.println("\n---- NODE HEALTH CHECK ----");
         System.out.println("Node " + entry.getNodeId() + " isRunning: " + entry.isRunning());
@@ -35,9 +35,9 @@ public class Solution {
 
         // Add new node
         System.out.println("\n---- ADD NODE ----");
-        cluster.addNode("node4");
+        kvStore.addNode("node4");
 
-        cluster.printCluster();
+        kvStore.printCluster();
 
         // Demonstrate stop and running check
         System.out.println("\n---- STOP NODE ----");

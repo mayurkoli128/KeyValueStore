@@ -1,6 +1,5 @@
 package StudentPackage;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,16 +22,13 @@ public class KVStore {
 
         // Step 1: Create all nodes
         for (String nodeId : nodeIds) {
-            List<String> peers = new ArrayList<>(nodeIds);
-            peers.remove(nodeId);
-
-            Node node = new Node(nodeId, peers);
+            Node node = new Node(nodeId);
             nodes.put(nodeId, node);
         }
 
-        // Step 2: Inject cluster reference (network wiring)
+        // Step 2: Inject peer nodes reference (network wiring)
         for (Node node : nodes.values()) {
-            node.setCluster(nodes);
+            node.setPeerNodes(nodes);
             node.start();
         }
     }
@@ -46,14 +42,12 @@ public class KVStore {
 
         System.out.println("Adding node: " + nodeId);
 
-        List<String> existingNodes = new ArrayList<>(nodes.keySet());
-
-        Node newNode = new Node(nodeId, existingNodes);
+        Node newNode = new Node(nodeId);
         nodes.put(nodeId, newNode);
 
-        // Update cluster reference everywhere
+        // Update peer nodes reference everywhere
         for (Node node : nodes.values()) {
-            node.setCluster(nodes);
+            node.setPeerNodes(nodes);
         }
 
         newNode.start();
@@ -71,7 +65,7 @@ public class KVStore {
         nodes.remove(nodeId);
 
         for (Node node : nodes.values()) {
-            node.setCluster(nodes);
+            node.setPeerNodes(nodes);
         }
     }
 

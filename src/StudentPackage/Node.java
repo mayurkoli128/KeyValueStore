@@ -1,8 +1,6 @@
 package StudentPackage;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -13,40 +11,39 @@ import java.util.Map;
 public class Node {
 
     private final String nodeId;
-    private final List<String> peerNodes;
     private final ConsistentHashRing ring;
 
     private final Map<String, Object> store = new HashMap<>();
 
-    private Map<String, Node> cluster;
+    private Map<String, Node> peerNodes;
     
     private boolean running = false;
 
     /**
-     * Creates a new Node with the specified ID and list of peer nodes.
+     * Creates a new Node with the specified ID.
      *
-     * @param nodeId    Unique identifier for this node
-     * @param peerNodes List of peer node IDs in the cluster
+     * @param nodeId Unique identifier for this node
      */
-    public Node(String nodeId, List<String> peerNodes) {
+    public Node(String nodeId) {
         this.nodeId = nodeId;
-        this.peerNodes = new ArrayList<>(peerNodes);
-
         this.ring = new ConsistentHashRing(100);
-
         ring.addNode(nodeId);
-        for (String peer : peerNodes) {
-            ring.addNode(peer);
-        }
     }
 
     /**
-     * Sets the cluster reference for inter-node communication.
+     * Sets the peer nodes for inter-node communication and updates the hash ring.
      *
-     * @param cluster Map of node IDs to Node instances
+     * @param peerNodes Map of node IDs to Node instances
      */
-    public void setCluster(Map<String, Node> cluster) {
-        this.cluster = cluster;
+    public void setPeerNodes(Map<String, Node> peerNodes) {
+        this.peerNodes = peerNodes;
+        
+        // Update the ring with all peer nodes
+        for (String peerId : peerNodes.keySet()) {
+            if (!peerId.equals(nodeId)) {
+                ring.addNode(peerId);
+            }
+        }
     }
 
     /**
@@ -82,7 +79,7 @@ public class Node {
      * @return The response from the target node, or null if the node doesn't exist
      */
     public Map<String, Object> sendToNode(String targetNode, Map<String, Object> message) {
-        Node node = cluster.get(targetNode);
+        Node node = peerNodes.get(targetNode);
         if (node == null) return null;
 
         return node.onMessage(this.nodeId, message);
