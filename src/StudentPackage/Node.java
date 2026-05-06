@@ -55,36 +55,6 @@ public class Node {
         return running;
     }
 
-    /**
-     * Dynamically calculates the next N replica nodes from a given node using TreeMap.
-     * This can be called even if the primary node is down.
-     */
-    private List<Node> getReplicaNodes(String primaryNodeId, int count) {
-        List<Node> replicas = new ArrayList<>();
-
-        // Build sorted map of all nodes (including self)
-        TreeMap<String, Node> allNodes = new TreeMap<>(peerNodes);
-        allNodes.put(nodeId, this);
-
-        String currentId = primaryNodeId;
-        for (int i = 0; i < count && replicas.size() < allNodes.size() - 1; i++) {
-            String nextId = allNodes.higherKey(currentId);
-
-            // Wrap around to first node if at the end
-            if (nextId == null) {
-                nextId = allNodes.firstKey();
-            }
-
-            // Don't add the primary itself as replica
-            if (!nextId.equals(primaryNodeId)) {
-                replicas.add(allNodes.get(nextId));
-            }
-            currentId = nextId;
-        }
-        
-        return replicas;
-    }
-
     private String getReplicaNames(List<Node> replicas) {
         List<String> names = new ArrayList<>();
         for (Node n : replicas) {
@@ -95,8 +65,8 @@ public class Node {
 
     public boolean put(String key, Object value) {
         Node primaryNode = ring.getNode(key);
-        // Calculate replicas dynamically - works even if primary is down!
-        List<Node> replicas = getReplicaNodes(primaryNode.getNodeId(), replicationFactor);
+        // Use hash ring to get replicas
+        List<Node> replicas = ring.getNextNNodes(primaryNode, replicationFactor);
         
         System.out.println("[PUT] Entry: " + nodeId + " | Key: " + key + " | Value: " + value);
         System.out.println("  Primary: " + primaryNode.getNodeId() + " | Replicas: " + getReplicaNames(replicas));
@@ -132,8 +102,8 @@ public class Node {
 
     public Object get(String key) {
         Node primaryNode = ring.getNode(key);
-        // Calculate replicas dynamically - works even if primary is down!
-        List<Node> replicas = getReplicaNodes(primaryNode.getNodeId(), replicationFactor);
+        // Use hash ring to get replicas
+        List<Node> replicas = ring.getNextNNodes(primaryNode, replicationFactor);
         
         System.out.println("[GET] Entry: " + nodeId + " | Key: " + key);
         System.out.println("  Primary: " + primaryNode.getNodeId() + " | Replicas: " + getReplicaNames(replicas));

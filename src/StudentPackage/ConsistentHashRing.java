@@ -58,4 +58,36 @@ public class ConsistentHashRing {
 
         return entry.getValue();
     }
+
+    /**
+     * Returns the next N distinct nodes clockwise from the given node on the hash ring.
+     * This is the CORRECT way to get replicas in consistent hashing.
+     */
+    public java.util.List<Node> getNextNNodes(Node startNode, int count) {
+        java.util.List<Node> result = new java.util.ArrayList<>();
+        if (ring.isEmpty() || count <= 0) return result;
+
+        long startHash = getHash(startNode.getNodeId());
+        
+        // Get all entries after the start node
+        Map.Entry<Long, Node> entry = ring.higherEntry(startHash);
+        
+        while (result.size() < count && result.size() < ring.size() - 1) {
+            // Wrap around if needed
+            if (entry == null) {
+                entry = ring.firstEntry();
+            }
+            
+            Node node = entry.getValue();
+            
+            // Don't add the start node itself, and avoid duplicates
+            if (!node.getNodeId().equals(startNode.getNodeId()) && !result.contains(node)) {
+                result.add(node);
+            }
+            
+            entry = ring.higherEntry(entry.getKey());
+        }
+        
+        return result;
+    }
 }
