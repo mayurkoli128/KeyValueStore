@@ -26,7 +26,7 @@ public class KVStore {
             nodes.put(nodeId, node);
         }
 
-        // Step 2: Inject peer nodes reference (network wiring)
+        // Step 2: Inject peer nodes reference
         for (Node node : nodes.values()) {
             node.setPeerNodes(nodes);
             node.start();

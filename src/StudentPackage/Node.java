@@ -15,7 +15,7 @@ public class Node {
 
     private final Map<String, Object> store = new HashMap<>();
 
-    private Map<String, Node> peerNodes;
+    private Map<String, Node> peerNodes = new HashMap<>();
     
     private boolean running = false;
 
@@ -26,22 +26,21 @@ public class Node {
      */
     public Node(String nodeId) {
         this.nodeId = nodeId;
-        this.ring = new ConsistentHashRing(100);
+        this.ring = new ConsistentHashRing(1);
         ring.addNode(nodeId);
     }
 
     /**
-     * Sets the peer nodes for inter-node communication and updates the hash ring.
+     * Sets the peer nodes (excluding self) for internode communication and updates the hash ring.
      *
-     * @param peerNodes Map of node IDs to Node instances
+     * @param allNodes Map of all node IDs to Node instances (this method will filter out self)
      */
-    public void setPeerNodes(Map<String, Node> peerNodes) {
-        this.peerNodes = peerNodes;
-        
-        // Update the ring with all peer nodes
-        for (String peerId : peerNodes.keySet()) {
-            if (!peerId.equals(nodeId)) {
-                ring.addNode(peerId);
+    public void setPeerNodes(Map<String, Node> allNodes) {
+        this.peerNodes = new HashMap<>();
+        for (Map.Entry<String, Node> entry : allNodes.entrySet()) {
+            if (!entry.getKey().equals(nodeId)) {
+                this.peerNodes.put(entry.getKey(), entry.getValue());
+                ring.addNode(entry.getKey());
             }
         }
     }
